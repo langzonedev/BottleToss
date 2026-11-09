@@ -14,10 +14,11 @@ BottleToss is a Lang Systems browser arcade game set on the fictional Sunset Cir
 
 Wait for **Release now** and the green sight. The little diamond marks the target’s aim point. On keyboard, hold a direction to nudge the sight. Pause with Escape or the Pause button. The run also pauses when the browser loses focus.
 
-- **Start run** gives you 60 seconds and 18 bottles. Direction signs score 100, warnings 200 and speed limits 350. A centred, well-timed hit adds 50 before the streak multiplier. Consecutive hits unlock up to ×4.
+- **Minute Run** gives you 60 seconds and 18 bottles. Direction signs score 100, warnings 200 and speed limits 350. A centred, well-timed hit adds 50 before the streak multiplier. Consecutive hits unlock up to ×4.
 - **Radar boards** sit beside parked patrol cars and award 750 base points. After each radar pass, the patrol lights flash in the rear-view mirror and the car briefly picks up speed.
-- **The route** fades from sunset through twilight into a moonlit night during a run.
-- **Practice** gives you unlimited time and bottles with a wider hit window. Its score is separate from your local best.
+- **Endurance** has unlimited bottles, regular scoring, and a repeating four-minute daylight-to-night cycle. Choose **Pause → End run** to bank your score. Its local best is separate from Minute Run.
+- **The route** starts in daylight. Minute Run reaches sunset around halfway through and finishes under the stars.
+- **Practice** gives you unlimited time and bottles with a wider hit window. Practice scores do not affect either local best.
 - Sound and the scored-run best are stored in this browser. The game uses locally generated graphics and audio.
 
 ## Hosting and development

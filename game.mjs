@@ -1,5 +1,5 @@
-import { AIM_DEPTH, AMMO, DURATION, FLIGHT, HOME, WINDUP, boostDistance, boostSpeed, clamp, distance, makeTarget, pace, routeLight, scoreHit, signs, targetContact } from './engine.mjs?v=3';
-import { Scene } from './scene.mjs?v=3';
+import { AIM_DEPTH, AMMO, DURATION, FLIGHT, HOME, WINDUP, boostDistance, boostSpeed, clamp, distance, makeTarget, pace, routeLight, scoreHit, signs, targetContact } from './engine.mjs?v=4';
+import { Scene } from './scene.mjs?v=4';
 import { fillShatter } from './shatter.mjs';
 
 const $ = (id) => document.getElementById(id);
@@ -13,7 +13,7 @@ const directions = new Map([
 ]);
 const keyAim = new Set();
 let state = 'title';
-let run = newRun(false);
+let run = newRun('minute');
 let hold = null;
 let elapsed = 0;
 let lastFrame = 0;
@@ -21,7 +21,11 @@ let lastDraw = 0;
 let redraw = true;
 let lean = 0;
 let sound = load('sound', 'on') === 'on';
-let best = Number(load('best','0')) || 0;
+const bestKeys = { minute: 'best', endurance: 'enduranceBest' };
+const best = {
+  minute: Number(load(bestKeys.minute,'0')) || 0,
+  endurance: Number(load(bestKeys.endurance,'0')) || 0,
+};
 let audio;
 let noiseBuffer;
 const shatters = [];
@@ -35,9 +39,9 @@ function save(key, value) {
   try { localStorage.setItem('bottletoss.' + key, value); } catch { /* Private browsing still plays. */ }
 }
 
-function newRun(practice) {
+function newRun(mode) {
   return {
-    practice, time: 0, dist: 0, aim: { ...HOME }, targets: [], nextIndex: 0, nextZ: practice ? 68 : 75,
+    mode, time: 0, dist: 0, aim: { ...HOME }, targets: [], nextIndex: 0, nextZ: mode === 'practice' ? 68 : 75,
     shots: [], bursts: [], boost: null, score: 0, ammo: AMMO, tossed: 0, hits: 0, streak: 0, longest: 0,
     callout: '', calloutUntil: 0, hitUntil: 0, pullbackUntil: 0, lastThrow: null,
   };
@@ -124,7 +128,14 @@ function write(id, value) {
 }
 
 function writeBest() {
-  $('best').firstChild.nodeValue = 'LOCAL BEST ' + String(best).padStart(4, '0') + ' ';
+  write('minuteBest',String(best.minute).padStart(4,'0'));
+  write('enduranceBest',String(best.endurance).padStart(4,'0'));
+}
+
+function runClock(time) {
+  const seconds = Math.floor(time);
+  const minutes = Math.floor(seconds / 60);
+  return minutes + ':' + String(seconds % 60).padStart(2,'0');
 }
 
 function updateSound() {
@@ -135,9 +146,11 @@ function updateSound() {
 function updateHUD() {
   const multiplier = run.streak ? Math.min(4, 1 + Math.floor((run.streak - 1) / 2)) : 1;
   write('score', String(run.score).padStart(4,'0'));
-  write('timeLabel', run.practice ? 'MODE' : 'TIME LEFT');
-  write('time', run.practice ? 'FREE' : Math.max(0, Math.ceil(DURATION - run.time)) + 's');
-  write('ammo', run.practice ? '∞' : run.ammo);
+  const minute = run.mode === 'minute';
+  write('timeLabel', minute ? 'TIME LEFT' : run.mode === 'endurance' ? 'ELAPSED' : 'MODE');
+  write('time', minute ? Math.max(0,Math.ceil(DURATION - run.time)) + 's'
+    : run.mode === 'endurance' ? runClock(run.time) : 'FREE');
+  write('ammo', minute ? run.ammo : '∞');
   const extraSpeed = boostSpeed(run.time, run.boost);
   write('speed', Math.round(pace(run.time) + extraSpeed));
   $('speed').classList.toggle('boosting', extraSpeed > 1);
@@ -158,23 +171,27 @@ function panel(next) {
   $('footer').hidden = active;
   $('steps').hidden = !title;
   $('results').hidden = next !== 'finished';
-  $('practice').hidden = paused;
-  $('menu').hidden = title;
+  $('practice').hidden = !title && (next !== 'finished' || run.mode === 'practice');
+  $('endurance').hidden = !title;
+  $('endRun').hidden = !paused || run.mode !== 'endurance';
+  $('menu').hidden = title || (paused && run.mode === 'endurance');
+  $('best').hidden = !title && next !== 'finished';
   $('panelTitle').classList.toggle('compact', !title);
   $('panelTitle').innerHTML = title ? 'BOTTLE<span>TOSS</span>' : paused ? 'PIT <span>STOP</span>' : 'RUN <span>COMPLETE</span>';
-  write('intro', title ? 'Ride from sunset into night. Time your throw as a sign sweeps past, and watch for radar boards worth bonus points.'
-    : paused ? 'Your run is on hold.' : 'Take another run at your best score.');
-  $('start').firstChild.nodeValue = title ? 'Start run ' : paused ? 'Resume ' : 'Run again ';
+  write('intro', title ? 'Beat your best in 60 seconds, or take the long road in Endurance with unlimited bottles.'
+    : paused && run.mode === 'endurance' ? 'Resume the drive, or end the run to save your score.'
+      : paused ? 'Your run is on hold.' : 'Take another run at your best score.');
+  $('start').firstChild.nodeValue = title ? 'Minute Run ' : paused ? 'Resume ' : 'Run again ';
   if (active) canvas.focus({ preventScroll: true });
   else $('start').focus({ preventScroll: true });
   updateHUD();
 }
 
-function start(practice) {
+function start(mode) {
   warmAudio();
   playSound('start');
   cancelHold();
-  run = newRun(practice);
+  run = newRun(mode);
   lean = 0;
   fillRoad();
   panel('playing');
@@ -183,9 +200,13 @@ function start(practice) {
 
 function finish() {
   cancelHold();
-  if (run.score > best) {
-    best = run.score;
-    save('best', String(best));
+  for (const shot of run.shots) resolve(shot,false);
+  run.shots = [];
+  run.bursts = [];
+  const key = bestKeys[run.mode];
+  if (key && run.score > best[run.mode]) {
+    best[run.mode] = run.score;
+    save(key,String(run.score));
     writeBest();
   }
   const stats = [
@@ -193,6 +214,7 @@ function finish() {
     [(run.tossed ? Math.round(run.hits * 100 / run.tossed) : 0) + '%', 'ACCURACY'],
     [run.longest, 'BEST STREAK'],
   ];
+  if (run.mode === 'endurance') stats.push([runClock(run.time),'TIME ON ROAD']);
   $('results').replaceChildren(...stats.map(([value, label]) => {
     const cell = document.createElement('span'), number = document.createElement('b');
     number.textContent = value;
@@ -209,7 +231,7 @@ function pause() {
 }
 
 function canThrow() {
-  return state === 'playing' && (run.practice || (run.ammo > 0 && run.time < DURATION))
+  return state === 'playing' && (run.mode !== 'minute' || (run.ammo > 0 && run.time < DURATION))
     && run.time >= run.pullbackUntil;
 }
 
@@ -231,7 +253,7 @@ function cancelHold() {
 function fillRoad() {
   while (run.nextZ < run.dist + 300) {
     run.targets.push(makeTarget(run.nextIndex, run.nextZ, true));
-    run.nextZ += (run.practice ? 55 : 73) + (run.nextIndex * 17 % 19);
+    run.nextZ += (run.mode === 'practice' ? 55 : 73) + (run.nextIndex * 17 % 19);
     run.nextIndex++;
   }
   run.targets = run.targets.filter(target => target.z > run.dist - 5);
@@ -254,7 +276,7 @@ function targetGuide() {
     if (depth < 8 || depth > 34 || offset >= nearest) continue;
     nearest = offset;
     guide = target;
-    contact = targetContact(target, depth, run.aim, run.practice);
+    contact = targetContact(target, depth, run.aim, run.mode === 'practice');
   }
   return { guide, contact };
 }
@@ -281,7 +303,7 @@ function release(input) {
   run.shots.push(shot);
   run.lastThrow = run.time;
   run.tossed++;
-  if (!run.practice) run.ammo--;
+  if (run.mode === 'minute') run.ammo--;
   run.pullbackUntil = run.time + FLIGHT + .07;
   playSound('throw');
   updateHUD();
@@ -292,11 +314,13 @@ function message(text, seconds) {
   run.calloutUntil = run.time + seconds;
 }
 
-function resolve(shot) {
+function resolve(shot, feedback = true) {
   if (!shot.target) {
     run.streak = 0;
-    message(shot.miss, 1.0);
-    playSound('miss');
+    if (feedback) {
+      message(shot.miss, 1.0);
+      playSound('miss');
+    }
     return;
   }
   const target = shot.target;
@@ -306,6 +330,7 @@ function resolve(shot) {
   run.longest = Math.max(run.streak, run.longest);
   const { points } = scoreHit(target.kind, run.streak, shot.perfect);
   run.score += points;
+  if (!feedback) return;
   run.hitUntil = run.time + .18;
   run.bursts.push({ x: shot.aim.x, y: shot.aim.y, z: target.z, age: 0, points });
   message((shot.perfect ? 'PERFECT · ' : 'HIT · ') + signs[target.kind].name + ' +' + points, 1.15);
@@ -355,7 +380,7 @@ function simulate(dt) {
   run.shots = run.shots.filter(shot => shot.age < 1);
   run.bursts.forEach(burst => { burst.age += dt; });
   run.bursts = run.bursts.filter(burst => burst.age < .78);
-  if (!run.practice && (run.time >= DURATION || run.ammo === 0) && run.shots.length === 0
+  if (run.mode === 'minute' && (run.time >= DURATION || run.ammo === 0) && run.shots.length === 0
       && run.time >= run.pullbackUntil && !run.bursts.length) finish();
 }
 
@@ -386,12 +411,12 @@ function frame(timestamp) {
   const bob = reduced.matches ? 0 : Math.sin(time * 3.8) * Math.min(2.5, scene.h*.005) + hitShake;
   const view = {
     time, dist: title ? elapsed * 24 : run.dist, lean, bob, holding: active && Boolean(hold), guide, contact,
-    ...routeLight(title ? 0 : run.time),
+    ...routeLight(title ? 38 : run.time, title ? 'minute' : run.mode),
     mirror: !title && run.boost ? run.time - run.boost.at : Infinity,
     charge: hold ? clamp((run.time - hold.time) / WINDUP, 0, 1) : 1,
     follow: !hold && run.lastThrow !== null ? (run.time - run.lastThrow) / FLIGHT : null,
     aim: run.aim, reduced: reduced.matches, shots: run.shots, bursts: run.bursts,
-    targets: title ? titleTargets(time) : run.targets, ammo: run.practice ? AMMO : run.ammo,
+    targets: title ? titleTargets(time) : run.targets, ammo: run.mode === 'minute' ? run.ammo : AMMO,
   };
   scene.render(view);
 }
@@ -459,8 +484,11 @@ $('sound').addEventListener('click', () => {
 });
 $('pause').addEventListener('click', pause);
 $('menu').addEventListener('click', () => { cancelHold(); panel('title'); });
-$('start').addEventListener('click', () => state === 'paused' ? panel('playing') : start(false));
-$('practice').addEventListener('click', () => start(true));
+$('start').addEventListener('click', () => state === 'paused' ? panel('playing')
+  : start(state === 'finished' ? run.mode : 'minute'));
+$('endurance').addEventListener('click', () => start('endurance'));
+$('practice').addEventListener('click', () => start('practice'));
+$('endRun').addEventListener('click', () => { if (state === 'paused' && run.mode === 'endurance') finish(); });
 updateSound();
 writeBest();
 requestAnimationFrame(frame);

@@ -7,7 +7,7 @@
   <meta name="description" content="A back-seat arcade timing game from Lang Systems. Hold, aim, release.">
   <title>BottleToss | Lang Systems Arcade</title>
   <link rel="icon" href="./art/icon.svg" type="image/svg+xml">
-  <link rel="stylesheet" href="./style.css?v=3">
+  <link rel="stylesheet" href="./style.css?v=4">
 </head>
 <body>
   <main id="game" aria-label="BottleToss arcade game">
@@ -38,21 +38,23 @@
       <div class="panel">
         <p class="eyebrow" id="eyebrow"><span></span> ARCADE 01 / SUNSET CIRCUIT</p>
         <h1 id="panelTitle">BOTTLE<span>TOSS</span></h1>
-        <p id="intro">Ride from sunset into night. Time your throw as a sign sweeps past, and watch for radar boards worth bonus points.</p>
+        <p id="intro">Beat your best in 60 seconds, or take the long road in Endurance with unlimited bottles.</p>
         <ol id="steps">
           <li><b>01</b> Hold to lean</li><li><b>02</b> Drag to aim</li><li><b>03</b> Release on green</li>
         </ol>
         <div id="results" class="results" hidden></div>
         <div class="actions">
-          <button id="start" class="primary" type="button">Start run <span aria-hidden="true">→</span></button>
+          <button id="start" class="primary" type="button">Minute Run <span aria-hidden="true">→</span></button>
+          <button id="endurance" type="button">Endurance</button>
           <button id="practice" type="button">Practice</button>
+          <button id="endRun" type="button" hidden>End run</button>
           <button id="menu" type="button" hidden>Title screen</button>
         </div>
-        <p id="best" class="fine">LOCAL BEST 0000 <span>•</span> FICTIONAL ARCADE GAME</p>
+        <p id="best" class="fine">MINUTE BEST <b id="minuteBest">0000</b> <span>•</span> ENDURANCE BEST <b id="enduranceBest">0000</b></p>
       </div>
     </section>
     <footer id="footer"><span>ROADSIDE ARCADE</span><span>01 / THE SUNSET CIRCUIT</span></footer>
   </main>
-  <script type="module" src="./game.mjs?v=3"></script>
+  <script type="module" src="./game.mjs?v=4"></script>
 </body>
 </html>

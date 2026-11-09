@@ -1,4 +1,4 @@
-import { AIM_DEPTH, clamp, mix, signs } from './engine.mjs?v=3';
+import { AIM_DEPTH, clamp, mix, signs } from './engine.mjs?v=4';
 
 const TAU = Math.PI * 2;
 const noise = (n) => { const v = Math.sin(n * 127.13 + 81.17) * 43758.5453; return v - Math.floor(v); };
@@ -10,6 +10,7 @@ export class Scene {
     this.canvas = canvas;
     this.ctx = canvas.getContext('2d', { alpha: false });
     this.backdrop = document.createElement('canvas');
+    this.dayBackdrop = document.createElement('canvas');
     this.nightBackdrop = document.createElement('canvas');
     this.resize();
   }
@@ -24,8 +25,9 @@ export class Scene {
     this.focal = Math.min(width * .96, height * 1.48);
     this.horizon = height * (width < 650 ? .49 : .46);
     this.centre = width * (width < 650 ? .415 : .52);
-    this.cacheBackdrop(this.backdrop, false);
-    this.cacheBackdrop(this.nightBackdrop, true);
+    this.cacheBackdrop(this.dayBackdrop, 'day');
+    this.cacheBackdrop(this.backdrop, 'sunset');
+    this.cacheBackdrop(this.nightBackdrop, 'night');
   }
 
   poly(colour, points, stroke, weight = 1) {
@@ -69,14 +71,16 @@ export class Scene {
     return g;
   }
 
-  cacheBackdrop(canvas, night) {
+  cacheBackdrop(canvas, phase) {
+    const day = phase === 'day', night = phase === 'night';
     const foreground = this.ctx;
     canvas.width = Math.round(this.w);
     canvas.height = Math.round(this.h);
     this.ctx = canvas.getContext('2d');
     const c = this.ctx, w = this.w, h = this.h, horizon = this.horizon;
-    const sky = night
-      ? [[0,'#0b1429'],[.22,'#151f3b'],[.42,'#364066'],[.54,'#654b6b'],[1,'#211e39']]
+    const sky = day
+      ? [[0,'#3783b5'],[.28,'#72b4cf'],[.48,'#afd4d9'],[.56,'#e8daba'],[1,'#e6be8c']]
+      : night ? [[0,'#0b1429'],[.22,'#151f3b'],[.42,'#364066'],[.54,'#654b6b'],[1,'#211e39']]
       : [[0,'#202638'],[.22,'#67435c'],[.40,'#d37162'],[.54,'#fac48a'],[.75,'#bd7259'],[1,'#5a3533']];
     c.fillStyle = this.gradient(0,0,0,h,sky);
     c.fillRect(0,0,w,h);
@@ -94,12 +98,13 @@ export class Scene {
     for (let i = 0; i < 22; i++) {
       const x = noise(i + 71) * w, y = h * (.10 + noise(i + 111) * .34);
       const span = (.04 + noise(i + 31) * .16) * w;
-      const colour = night ? '#434b7041' : i % 3 ? '#f2a58b24' : '#662b512b';
+      const colour = day ? '#f8f8ed7a' : night ? '#434b7041' : i % 3 ? '#f2a58b24' : '#662b512b';
       this.poly(colour, [[x - span, y], [x - span * .45, y - h * .006], [x + span * .66, y - h * .001], [x + span, y + h * .003], [x - span * .22, y + h * .007]]);
     }
 
     const skyline = Array(32).fill(h);
-    const mountains = night ? ['#303755','#252d4b','#1c243c'] : ['#8d525d','#62444f','#493741'];
+    const mountains = day ? ['#8ca5b0','#87969e','#707d83']
+      : night ? ['#303755','#252d4b','#1c243c'] : ['#8d525d','#62444f','#493741'];
     for (let layer = 0; layer < mountains.length; layer++) {
       const points = [[-3, h]];
       for (let i = -1; i <= 30; i++) {
@@ -114,8 +119,9 @@ export class Scene {
     }
     this.skyline = skyline.map((y,i) => [w*(i-1)/28,y]);
 
-    const ground = night
-      ? [[0,'#393548'],[.18,'#343047'],[.56,'#27283f'],[1,'#191e30']]
+    const ground = day
+      ? [[0,'#b3a586'],[.18,'#ac936d'],[.56,'#96734f'],[1,'#594c40']]
+      : night ? [[0,'#393548'],[.18,'#343047'],[.56,'#27283f'],[1,'#191e30']]
       : [[0,'#815653'],[.18,'#94594a'],[.56,'#66403d'],[1,'#2c252e']];
     c.fillStyle = this.gradient(0,horizon-h*.009,0,h,ground);
     c.fillRect(0,horizon+1,w,h-horizon);
@@ -131,16 +137,23 @@ export class Scene {
     const lean = cameraLean(view.lean,view.reduced);
     const x = -w*.058*lean, y = -h*.018*lean;
     const width = w-x, height = h-y;
-    c.drawImage(this.backdrop,x,y,width,height);
-    if (view.dark > 0) {
-      c.globalAlpha = view.dark;
-      c.drawImage(this.nightBackdrop,x,y,width,height);
-      c.globalAlpha = 1;
+    const dark = view.dark ?? 0, daylight = view.daylight ?? 0;
+    const sunset = 1 - daylight - dark;
+    if (daylight > 0) c.drawImage(this.dayBackdrop,x,y,width,height);
+    if (sunset > 0) {
+      c.globalAlpha = sunset / (1 - dark);
+      c.drawImage(this.backdrop,x,y,width,height);
     }
-    const sunlight = 1 - ease(clamp(view.progress/.76,0,1));
-    if (!(sunlight > 0)) return;
+    if (dark > 0) {
+      c.globalAlpha = dark;
+      c.drawImage(this.nightBackdrop,x,y,width,height);
+    }
+    c.globalAlpha = 1;
+    const sun = view.sun ?? mix(.59,1,view.progress ?? 0);
+    const sunlight = 1 - dark;
+    if (sunlight <= 0) return;
 
-    const sx = mix(.70,.83,view.progress)*w, sy = this.horizon + mix(-.083,.064,view.progress)*h;
+    const sx = mix(.65,.83,sun)*w, sy = this.horizon + mix(-.29,.06,sun)*h;
     const r = Math.min(w*.065,h*.056);
     c.save();
     c.beginPath();
@@ -154,12 +167,12 @@ export class Scene {
     c.clip();
     c.globalAlpha = sunlight;
     const halo = c.createRadialGradient(sx,sy,r*.1,sx,sy,r*4);
-    halo.addColorStop(0,'#ffcf839c');
+    halo.addColorStop(0,daylight > .5 ? '#fff1b48c' : '#ffcf839c');
     halo.addColorStop(.40,'#ff946e54');
     halo.addColorStop(1,'#ff956800');
     c.fillStyle = halo;
     c.fillRect(sx-r*4,sy-r*4,r*8,r*8);
-    this.oval(sx,sy,r,r,'#ffe2a4');
+    this.oval(sx,sy,r,r,daylight > .5 ? '#fff0be' : '#ffe2a4');
     c.restore();
   }
 

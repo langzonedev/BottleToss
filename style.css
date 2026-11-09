@@ -77,8 +77,8 @@ h1.compact { font-size: clamp(2.5rem,6vw,5rem); letter-spacing: -.06em; }
 #steps li { background: #1b1c20df; border: 1px solid var(--line); border-radius: 4px; padding: 7px; }
 #steps b { color: var(--amber); margin-right: 3px; }
 .actions { display: flex; gap: 8px; flex-wrap: wrap; }
-.actions button { min-width: 105px; }
-.actions .primary { background: var(--amber); color: #211507; border-color: #ffc995; min-width: 158px; text-align: left; }
+.actions button { min-width: 86px; }
+.actions .primary { background: var(--amber); color: #211507; border-color: #ffc995; min-width: 136px; text-align: left; }
 .primary span { float: right; margin-left: 12px; }
 .fine { margin: 15px 0 0; letter-spacing: .1em; font-size: .59rem; }
 .fine span { color: var(--amber); margin: 0 4px; }

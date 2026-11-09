@@ -43,10 +43,25 @@ export function boostDistance(time, boost) {
   return boost.carried + (BOOST_KMH / 3.6) * (BOOST_SECONDS / Math.PI) * (1 - Math.cos(Math.PI * phase));
 }
 
-export function routeLight(time) {
-  const progress = clamp((time - 8) / 38, 0, 1);
-  const dark = progress * progress * (3 - 2 * progress);
-  return { progress, dark };
+export function routeLight(time, mode = 'minute') {
+  const endless = mode === 'endurance';
+  const t = endless ? time % 240 : time;
+  const dayEnd = endless ? 100 : 22;
+  const sunsetEnd = endless ? 130 : 38;
+  const nightStart = endless ? 165 : 52;
+  const fade = (start, end) => {
+    const progress = clamp((t - start) / (end - start), 0, 1);
+    return progress * progress * (3 - 2 * progress);
+  };
+  if (endless && t >= 210) {
+    const sunrise = fade(210,240);
+    return { daylight: sunrise, dark: 1 - sunrise, sun: mix(1,.10,sunrise) };
+  }
+  const sunset = fade(dayEnd,sunsetEnd);
+  const dark = fade(sunsetEnd,nightStart);
+  const sun = t < dayEnd ? mix(.10,.32,fade(0,dayEnd))
+    : t < sunsetEnd ? mix(.32,.59,sunset) : mix(.59,1,dark);
+  return { daylight: 1 - sunset, dark, sun };
 }
 
 export function makeTarget(index, z, radar = false) {
