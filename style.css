@@ -108,3 +108,5 @@ footer { position: absolute; z-index: 2; left: max(14px,env(safe-area-inset-left
   .drive { bottom: 8px; }
 }
 @media (prefers-reduced-motion: reduce) { button:active { transform: none; } }
+
+#speed.boosting { color: var(--amber); }

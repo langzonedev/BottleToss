@@ -8,6 +8,8 @@ Start in Practice, then play a full 60-second run. Try the first direction sign 
 | Timing | Can you tell whether a miss came from early release, late release, or aim? |
 | Aiming | Can you keep the sign visible and aim comfortably on a phone in one hand? |
 | Impact | Does the shatter and metallic hit feel satisfying? Compare the warning and speed signs with sound on. |
+| Night drive | Keep driving through twilight and check that signs and the aiming sight stay readable at night. |
+| Radar bonus | Aim at the small amber radar board beside the patrol car. Check the bonus, then watch the rear-view mirror and speedometer as you pass. |
 | Replay | Try a full run, then replay. Check the local best, accuracy, and highest streak on the result screen. |
 | Interruption | Pause mid-hold, resume and check that the bottle count stays the same. |
 

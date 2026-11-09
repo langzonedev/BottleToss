@@ -3,12 +3,15 @@ export const AIM_DEPTH = 16;
 export const WINDUP = 0.18;
 export const AMMO = 18;
 export const DURATION = 60;
+const BOOST_SECONDS = 4.5;
+const BOOST_KMH = 12;
 export const HOME = { x: 5.75, y: 2.30 };
 
 export const signs = {
-  direction: { name: 'DIRECTION', points: 100, w: 2.75, h: 1.12, y: 2.32 },
-  warning: { name: 'WARNING', points: 200, w: 1.16, h: 1.16, y: 2.31 },
-  speed: { name: 'SPEED LIMIT', points: 350, w: .79, h: .79, y: 2.42 },
+  direction: { name: 'DIRECTION', points: 100, w: 2.75, h: 1.12, y: 2.32, window: 5.2 },
+  warning: { name: 'WARNING', points: 200, w: 1.16, h: 1.16, y: 2.31, window: 3.9 },
+  speed: { name: 'SPEED LIMIT', points: 350, w: .79, h: .79, y: 2.42, window: 2.8 },
+  radar: { name: 'RADAR BONUS', points: 750, w: 1.10, h: .70, y: 1.85, window: 2.55 },
 };
 
 const pattern = [
@@ -28,19 +31,39 @@ export function distance(time) {
     + 2 * (1 - Math.cos(time * .63)) / .63) / 3.6;
 }
 
-export function makeTarget(index, z) {
-  const [kind, x, rise] = pattern[index % pattern.length];
+export function boostSpeed(time, boost) {
+  if (!boost) return 0;
+  const phase = clamp((time - boost.at) / BOOST_SECONDS, 0, 1);
+  return phase === 1 ? 0 : BOOST_KMH * Math.sin(Math.PI * phase);
+}
+
+export function boostDistance(time, boost) {
+  if (!boost) return 0;
+  const phase = clamp((time - boost.at) / BOOST_SECONDS, 0, 1);
+  return boost.carried + (BOOST_KMH / 3.6) * (BOOST_SECONDS / Math.PI) * (1 - Math.cos(Math.PI * phase));
+}
+
+export function routeLight(time) {
+  const progress = clamp((time - 8) / 38, 0, 1);
+  const dark = progress * progress * (3 - 2 * progress);
+  return { progress, dark };
+}
+
+export function makeTarget(index, z, radar = false) {
+  const [kind, x, rise] = radar && [5, 12, 17].includes(index % 19)
+    ? ['radar', index % 2 ? 6.32 : 6.68, 0]
+    : pattern[index % pattern.length];
   return { kind, x, y: signs[kind].y + rise, z, label: [80, 90, 100][index % 3], hitAt: null };
 }
 
 export function targetContact(target, depth, aim, practice) {
-  const { w, h } = signs[target.kind];
+  const { w, h, window } = signs[target.kind];
   const grace = practice ? 1.35 : 1;
-  const t = (depth - AIM_DEPTH) / ({ direction: 5.2, warning: 3.9, speed: 2.8 }[target.kind] * grace);
+  const t = (depth - AIM_DEPTH) / (window * grace);
   const x = (aim.x - target.x) / ((w / 2 + .16) * grace);
   const y = (aim.y - target.y) / ((h / 2 + .12) * grace);
-  const shape = target.kind === 'direction' ? Math.max(Math.abs(x), Math.abs(y))
-    : target.kind === 'warning' ? Math.abs(x) + Math.abs(y) : Math.hypot(x, y);
+  const shape = target.kind === 'speed' ? Math.hypot(x, y)
+    : target.kind === 'warning' ? Math.abs(x) + Math.abs(y) : Math.max(Math.abs(x), Math.abs(y));
   return { t, shape, hit: Math.abs(t) <= 1 && shape <= 1, perfect: Math.abs(t) < .34 && shape < .51 };
 }
 

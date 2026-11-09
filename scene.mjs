@@ -1,4 +1,4 @@
-import { AIM_DEPTH, clamp, mix, signs } from './engine.mjs';
+import { AIM_DEPTH, clamp, mix, signs } from './engine.mjs?v=3';
 
 const TAU = Math.PI * 2;
 const noise = (n) => { const v = Math.sin(n * 127.13 + 81.17) * 43758.5453; return v - Math.floor(v); };
@@ -10,6 +10,7 @@ export class Scene {
     this.canvas = canvas;
     this.ctx = canvas.getContext('2d', { alpha: false });
     this.backdrop = document.createElement('canvas');
+    this.nightBackdrop = document.createElement('canvas');
     this.resize();
   }
 
@@ -23,7 +24,8 @@ export class Scene {
     this.focal = Math.min(width * .96, height * 1.48);
     this.horizon = height * (width < 650 ? .49 : .46);
     this.centre = width * (width < 650 ? .415 : .52);
-    this.cacheBackdrop();
+    this.cacheBackdrop(this.backdrop, false);
+    this.cacheBackdrop(this.nightBackdrop, true);
   }
 
   poly(colour, points, stroke, weight = 1) {
@@ -67,49 +69,98 @@ export class Scene {
     return g;
   }
 
-  cacheBackdrop() {
+  cacheBackdrop(canvas, night) {
     const foreground = this.ctx;
-    this.backdrop.width = Math.round(this.w);
-    this.backdrop.height = Math.round(this.h);
-    this.ctx = this.backdrop.getContext('2d');
+    canvas.width = Math.round(this.w);
+    canvas.height = Math.round(this.h);
+    this.ctx = canvas.getContext('2d');
     const c = this.ctx, w = this.w, h = this.h, horizon = this.horizon;
-    c.fillStyle = this.gradient(0, 0, 0, h, [[0, '#202638'], [.22, '#67435c'], [.40, '#d37162'], [.54, '#fac48a'], [.75, '#bd7259'], [1, '#5a3533']]);
-    c.fillRect(0, 0, w, h);
+    const sky = night
+      ? [[0,'#0b1429'],[.22,'#151f3b'],[.42,'#364066'],[.54,'#654b6b'],[1,'#211e39']]
+      : [[0,'#202638'],[.22,'#67435c'],[.40,'#d37162'],[.54,'#fac48a'],[.75,'#bd7259'],[1,'#5a3533']];
+    c.fillStyle = this.gradient(0,0,0,h,sky);
+    c.fillRect(0,0,w,h);
 
-    const sx = w * .70, sy = horizon - h * .083, r = Math.min(w * .065, h * .056);
-    const halo = c.createRadialGradient(sx, sy, r * .1, sx, sy, r * 5);
-    halo.addColorStop(0, '#ffdc91a3');
-    halo.addColorStop(.32, '#ffad6970');
-    halo.addColorStop(1, '#ff956800');
-    c.fillStyle = halo;
-    c.fillRect(0, 0, w, horizon + h * .1);
-    this.oval(sx, sy, r, r, '#ffe2a4');
-
+    if (night) {
+      for (let i = 0; i < 46; i++) {
+        const radius = .45 + noise(i+151)*.92;
+        this.oval(w*noise(i+341),h*(.045+noise(i+490)*.36),radius,radius,'#d5dcff95');
+      }
+      const mx = w*.67, my = h*.22, r = Math.min(w*.036,h*.026);
+      this.oval(mx,my,r*1.55,r*1.55,'#b8c9ff12');
+      this.oval(mx,my,r,r,'#dfe9ff');
+      this.oval(mx+r*.46,my-r*.23,r*.88,r*.88,'#1b2744');
+    }
     for (let i = 0; i < 22; i++) {
       const x = noise(i + 71) * w, y = h * (.10 + noise(i + 111) * .34);
       const span = (.04 + noise(i + 31) * .16) * w;
-      this.poly(i % 3 ? '#f2a58b24' : '#662b512b', [[x - span, y], [x - span * .45, y - h * .006], [x + span * .66, y - h * .001], [x + span, y + h * .003], [x - span * .22, y + h * .007]]);
+      const colour = night ? '#434b7041' : i % 3 ? '#f2a58b24' : '#662b512b';
+      this.poly(colour, [[x - span, y], [x - span * .45, y - h * .006], [x + span * .66, y - h * .001], [x + span, y + h * .003], [x - span * .22, y + h * .007]]);
     }
 
-    for (let layer = 0; layer < 3; layer++) {
+    const skyline = Array(32).fill(h);
+    const mountains = night ? ['#303755','#252d4b','#1c243c'] : ['#8d525d','#62444f','#493741'];
+    for (let layer = 0; layer < mountains.length; layer++) {
       const points = [[-3, h]];
       for (let i = -1; i <= 30; i++) {
         const wave = .62 + .30 * Math.sin(i * .37 + layer * 3.1) + .21 * Math.sin(i * 1.11 + layer);
         const edge = Math.min(1, Math.abs(i - 14) / 7);
         const y = horizon + h * (layer * .021 - (.025 + .1 * edge) * wave - noise(i + layer * 17) * .014);
         points.push([w * i / 28, y]);
+        skyline[i+1] = Math.min(skyline[i+1],y,horizon+1);
       }
       points.push([w + 5, h]);
-      this.poly(['#8d525d','#62444f','#493741'][layer], points);
+      this.poly(mountains[layer], points);
     }
+    this.skyline = skyline.map((y,i) => [w*(i-1)/28,y]);
 
-    c.fillStyle = this.gradient(0, horizon - h * .009, 0, h, [[0, '#815653'], [.18, '#94594a'], [.56, '#66403d'], [1, '#2c252e']]);
-    c.fillRect(0, horizon + 1, w, h - horizon);
+    const ground = night
+      ? [[0,'#393548'],[.18,'#343047'],[.56,'#27283f'],[1,'#191e30']]
+      : [[0,'#815653'],[.18,'#94594a'],[.56,'#66403d'],[1,'#2c252e']];
+    c.fillStyle = this.gradient(0,horizon-h*.009,0,h,ground);
+    c.fillRect(0,horizon+1,w,h-horizon);
     for (let i = 0; i < 23; i++) {
       const y = horizon + 3 + (h - horizon) * Math.pow(i / 24, 2);
-      this.line(i % 2 ? '#a471532c' : '#442d3627', 1, [[0, y], [w, y]]);
+      this.line(night ? '#74718c24' : i % 2 ? '#a471532c' : '#442d3627',1,[[0,y],[w,y]]);
     }
     this.ctx = foreground;
+  }
+
+  sky(view) {
+    const { w, h, ctx: c } = this;
+    const lean = cameraLean(view.lean,view.reduced);
+    const x = -w*.058*lean, y = -h*.018*lean;
+    const width = w-x, height = h-y;
+    c.drawImage(this.backdrop,x,y,width,height);
+    if (view.dark > 0) {
+      c.globalAlpha = view.dark;
+      c.drawImage(this.nightBackdrop,x,y,width,height);
+      c.globalAlpha = 1;
+    }
+    const sunlight = 1 - ease(clamp(view.progress/.76,0,1));
+    if (!(sunlight > 0)) return;
+
+    const sx = mix(.70,.83,view.progress)*w, sy = this.horizon + mix(-.083,.064,view.progress)*h;
+    const r = Math.min(w*.065,h*.056);
+    c.save();
+    c.beginPath();
+    c.moveTo(-2,0);
+    c.lineTo(w+2,0);
+    for (let i = this.skyline.length-1; i >= 0; i--) {
+      const [px,py] = this.skyline[i];
+      c.lineTo(x+px*width/w,y+py*height/h);
+    }
+    c.closePath();
+    c.clip();
+    c.globalAlpha = sunlight;
+    const halo = c.createRadialGradient(sx,sy,r*.1,sx,sy,r*4);
+    halo.addColorStop(0,'#ffcf839c');
+    halo.addColorStop(.40,'#ff946e54');
+    halo.addColorStop(1,'#ff956800');
+    c.fillStyle = halo;
+    c.fillRect(sx-r*4,sy-r*4,r*8,r*8);
+    this.oval(sx,sy,r,r,'#ffe2a4');
+    c.restore();
   }
 
   project(x, y, z, view) {
@@ -128,6 +179,14 @@ export class Scene {
     const strip = (x1, x2, z1, z2, fill) => this.poly(fill, [p(x1,z1), p(x2,z1), p(x2,z2), p(x1,z2)]);
     strip(-5.18, 5.18, near, far, '#ac7759');
     strip(-4.16, 4.16, near, far, this.gradient(0, this.horizon, 0, this.h * .91, [[0,'#674f50'], [.12,'#48434a'], [1,'#242731']]));
+    if (view.dark > 0) {
+      this.ctx.globalAlpha = view.dark;
+      strip(-5.18,5.18,near,far,'#222439');
+      strip(-4.16,4.16,near,far,this.gradient(0,this.horizon,0,this.h*.9,[[0,'#302b42'],[.25,'#242a3c'],[1,'#121929']]));
+      const wash = this.gradient(0,this.horizon,0,this.h*.91,[[0,'#ffd59900'],[.09,'#ffe1ad44'],[.38,'#f6c98331'],[1,'#e9b37210']]);
+      this.poly(wash,[p(-3.8,near),p(4.9,near),p(3.2,19),p(.75,37),p(-2.0,27)]);
+      this.ctx.globalAlpha = 1 - view.dark*.36;
+    }
     strip(-4.03, -3.89, near, far, '#eed0ac');
     strip(3.89, 4.03, near, far, '#eed0ac');
     strip(4.35, 4.47, near, far, '#4a3533');
@@ -140,6 +199,7 @@ export class Scene {
       const x = (noise(i + Math.floor(dist / 5)) - .5) * 7.7;
       if (z > near) strip(x, x + .05, z, z + .8, '#eed8c31b');
     }
+    this.ctx.globalAlpha = 1;
   }
 
   scenery(view) {
@@ -153,13 +213,19 @@ export class Scene {
     view.targets.forEach(target => {
       const z = target.z - view.dist;
       if (z > 2 && z < 285) drawList.push({ z, target });
+      if (target.kind === 'radar' && z > -3 && z < 265) drawList.push({ z:z+5, patrol:target });
     });
     drawList.sort((a, b) => b.z - a.z);
-    drawList.forEach(({z, i, target}) => target ? this.sign(target, z, view) : this.props(i, z, view));
+    drawList.forEach(({z,i,target,patrol}) => {
+      if (target) this.sign(target,z,view);
+      else if (patrol) this.patrolCar(patrol,z,view);
+      else this.props(i,z,view);
+    });
   }
 
   props(i, z, view) {
     const s = this.focal / z;
+    this.ctx.globalAlpha = 1 - (view.dark ?? 0)*.56;
     for (const side of [-1, 1]) {
       const k = i + side * 2187;
       const [x, y] = this.project(side * (7.2 + 16 * noise(k)), 0, z, view);
@@ -183,10 +249,54 @@ export class Scene {
       }
     }
 
+    this.ctx.globalAlpha = 1;
     if (i % 2 === 0) {
       const [x, y] = this.project(4.72, 0, z, view);
       this.line('#e4c9af', Math.max(1, .10 * s), [[x, y], [x, y - .77 * s]]);
       this.line('#c75242', Math.max(1, .108 * s), [[x, y - .54 * s], [x, y - .68 * s]]);
+    }
+  }
+
+  patrolCar(target, z, view) {
+    const x = target.x + 2.5;
+    const p = (dx,y,dz) => this.project(x+dx,y,z+dz,view);
+    const s = this.focal/z;
+    const [cx,cy] = p(0,0,0);
+    if (cx > this.w+s*3 || cx < -s*3) return;
+    const poly = (colour, points, edge) => this.poly(colour,points.map(point => p(...point)),edge,Math.max(.65,s*.04));
+    this.oval(cx,cy,s*1.43,s*.13,'#13182496');
+
+    for (const [wx,wz] of [[-.76,.27],[.74,.29],[-.76,2.74]]) {
+      const [px,py] = p(wx,.27,wz);
+      this.oval(px,py,s*.25,s*.25,'#171a22');
+      this.oval(px,py,s*.14,s*.14,'#585b6b');
+    }
+    poly('#a5adbd',[[-.91,.31,.1],[-.91,.73,.26],[-.87,.75,3.25],[-.83,.37,3.40]],'#373d52');
+    poly('#dce4e8',[[-.91,.73,.26],[.91,.73,.26],[.86,.77,3.25],[-.87,.75,3.25]]);
+    poly('#d3d8df',[[-.91,.31,.1],[.91,.31,.1],[.91,.73,.26],[-.91,.73,.26]],'#474d61');
+    poly('#ebe8df',[[-.72,.74,.95],[.72,.74,.95],[.57,1.41,1.66],[-.57,1.41,1.66]],'#62667a');
+    poly('#323d59',[[-.56,.79,1.00],[.56,.79,1.00],[.46,1.31,1.58],[-.46,1.31,1.58]]);
+    poly('#748398',[[-.72,.74,.95],[-.57,1.41,1.66],[-.55,1.35,2.68],[-.79,.75,3.10]],'#d1d7da');
+    poly('#e7e7e4',[[-.57,1.41,1.66],[.57,1.41,1.66],[.54,1.37,2.72],[-.55,1.35,2.68]]);
+
+    const [bx,by] = p(0,1.53,1.97);
+    this.ctx.fillStyle = '#263451';
+    this.ctx.fillRect(bx-s*.44,by,s*.88,s*.15);
+    this.oval(bx-s*.27,by+s*.052,s*.15,s*.071,'#67c3ff');
+    this.oval(bx+s*.27,by+s*.052,s*.15,s*.071,'#ff7d89');
+    for (const side of [-1,1]) {
+      const [lx,ly] = p(side*.66,.55,.15);
+      if (view.dark > .15) this.oval(lx,ly,s*.34,s*.15,'#ffcf7840');
+      this.oval(lx,ly,s*.16,s*.075,'#fff0b6');
+    }
+    const [fx,fy] = p(0,.50,.08);
+    this.ctx.fillStyle = '#26304b';
+    this.ctx.fillRect(fx-s*.34,fy-s*.06,s*.68,s*.12);
+    if (s > 12) this.text('POLICE',fx,fy-s*.15,Math.max(6,s*.17),'#263451');
+    for (let i=0;i<4;i++) {
+      const [lx,ly] = p(-.91,.60,.57+i*.53);
+      this.ctx.fillStyle = i%2 ? '#e8d55f' : '#355cab';
+      this.ctx.fillRect(lx,ly,s*.17,s*.13);
     }
   }
 
@@ -223,6 +333,13 @@ export class Scene {
     } else if (target.kind === 'warning') {
       this.poly('#ffbb49', [[0,-h/2],[w/2,0],[0,h/2],[-w/2,0]], '#2e2729', rim);
       if (s > 7) this.text('!', 0, h*.025, h*.68, '#2b272a');
+    } else if (target.kind === 'radar') {
+      this.line('#d5a85a',Math.max(1,s*.055),[[0,h*.5],[-w*.39,s*target.y],[0,h*.5],[w*.39,s*target.y]]);
+      if (s > 10) this.oval(0,0,w*.68,h*.79,'#ffbd5c21');
+      c.fillStyle = '#201c2c'; c.fillRect(-w/2,-h/2,w,h);
+      c.strokeStyle = '#ffbf63'; c.lineWidth = rim;
+      c.strokeRect(-w/2+rim/2,-h/2+rim/2,w-rim,h-rim);
+      if (s > 7) this.text('RADAR',0,0,h*.34,'#ffd68c');
     } else {
       this.oval(0, 0, w/2, h/2, '#f7ebd8');
       this.oval(0, 0, w*.46, h*.46, '#c13534');
@@ -253,9 +370,31 @@ export class Scene {
     line('#5e414b', Math.max(1,h*.005), [[.075,.126],[.20,.51],[.205,.60]]);
     poly('#29252e', [[.77,.082],[.813,.082],[.755,.425],[.735,.629],[.696,.65],[.716,.463]]);
     line('#875755', Math.max(1,h*.003), [[.777,.105],[.722,.48],[.703,.622]]);
-    poly('#1a1c25', [[.493,.07],[.517,.07],[.514,.108],[.57,.111],[.57,.146],[.542,.158],[.433,.156],[.409,.144],[.416,.115],[.49,.108]]);
-    poly('#736164', [[.424,.121],[.552,.117],[.561,.124],[.557,.143],[.434,.148],[.42,.141]]);
-    poly('#b48075', [[.426,.136],[.488,.128],[.554,.129],[.553,.139],[.434,.144]]);
+    const mirrorDrop = Math.max(0,(w <= 710 ? 145 : 79) / h - .132);
+    const mirrorShape = (colour, points) => poly(colour, points.map(([x,y]) => [x,y+mirrorDrop]));
+    poly('#1a1c25', [[.493,.07],[.517,.07],[.514,.116+mirrorDrop],[.49,.116+mirrorDrop]]);
+    mirrorShape('#1a1c25', [[.49,.108],[.57,.111],[.57,.146],[.542,.158],[.433,.156],[.409,.144],[.416,.115]]);
+    mirrorShape('#736164', [[.424,.121],[.552,.117],[.561,.124],[.557,.143],[.434,.148],[.42,.141]]);
+    const reflection = [[.426,.136],[.488,.128],[.554,.129],[.553,.139],[.434,.144]];
+    mirrorShape('#b48075',reflection);
+    if (view.dark > 0) {
+      c.globalAlpha = view.dark;
+      mirrorShape('#434b6a',reflection);
+      c.globalAlpha = 1;
+    }
+    if (view.mirror >= 0 && view.mirror < 5) {
+      const [rx,ry] = p(.493,.132+mirrorDrop);
+      const fade = Math.min(1,view.mirror*5,(5-view.mirror)*1.4);
+      const pulse = view.reduced ? .48 : .25 + .75*(.5+.5*Math.cos(TAU*1.35*view.mirror))**2;
+      const size = Math.max(3,Math.min(w,h)*.012);
+      for (const [offset,colour,glow] of [[-1,'#a6dcff','#498dff'],[1,'#ffadb5','#ff506f']]) {
+        c.globalAlpha = fade * pulse * .44;
+        this.oval(rx+offset*size*.72,ry,size*1.12,size*.69,glow);
+        c.globalAlpha = fade * pulse;
+        this.oval(rx+offset*size*.72,ry,size*.41,size*.30,colour);
+      }
+      c.globalAlpha = 1;
+    }
 
     poly(this.gradient(0,h*.58,0,h,[[0,'#42404b'],[.24,'#222530'],[1,'#10131d']]), [[-.08,.69],[.105,.647],[.235,.625],[.49,.614],[.695,.628],[.78,.666],[1.08,.624],[1.09,1.09],[-.09,1.09]]);
     line('#8a5655', Math.max(1,h*.003), [[-.03,.682],[.235,.621],[.49,.609],[.694,.625],[.78,.662]]);
@@ -466,8 +605,7 @@ export class Scene {
   render(view) {
     const c = this.ctx;
     c.setTransform(this.dpr,0,0,this.dpr,0,0);
-    const lean = cameraLean(view.lean,view.reduced);
-    c.drawImage(this.backdrop,-this.w*.058*lean,-this.h*.018*lean,this.w*(1+.058*lean),this.h*(1+.018*lean));
+    this.sky(view);
     this.road(view);
     this.scenery(view);
     this.cabin(view);

@@ -1,5 +1,5 @@
-import { AIM_DEPTH, AMMO, DURATION, FLIGHT, HOME, WINDUP, clamp, distance, makeTarget, pace, scoreHit, signs, targetContact } from './engine.mjs';
-import { Scene } from './scene.mjs?v=2';
+import { AIM_DEPTH, AMMO, DURATION, FLIGHT, HOME, WINDUP, boostDistance, boostSpeed, clamp, distance, makeTarget, pace, routeLight, scoreHit, signs, targetContact } from './engine.mjs?v=3';
+import { Scene } from './scene.mjs?v=3';
 import { fillShatter } from './shatter.mjs';
 
 const $ = (id) => document.getElementById(id);
@@ -38,7 +38,7 @@ function save(key, value) {
 function newRun(practice) {
   return {
     practice, time: 0, dist: 0, aim: { ...HOME }, targets: [], nextIndex: 0, nextZ: practice ? 68 : 75,
-    shots: [], bursts: [], score: 0, ammo: AMMO, tossed: 0, hits: 0, streak: 0, longest: 0,
+    shots: [], bursts: [], boost: null, score: 0, ammo: AMMO, tossed: 0, hits: 0, streak: 0, longest: 0,
     callout: '', calloutUntil: 0, hitUntil: 0, pullbackUntil: 0, lastThrow: null,
   };
 }
@@ -138,7 +138,9 @@ function updateHUD() {
   write('timeLabel', run.practice ? 'MODE' : 'TIME LEFT');
   write('time', run.practice ? 'FREE' : Math.max(0, Math.ceil(DURATION - run.time)) + 's');
   write('ammo', run.practice ? '∞' : run.ammo);
-  write('speed', Math.round(pace(run.time)));
+  const extraSpeed = boostSpeed(run.time, run.boost);
+  write('speed', Math.round(pace(run.time) + extraSpeed));
+  $('speed').classList.toggle('boosting', extraSpeed > 1);
   write('combo', run.streak >= 2 ? run.streak + ' IN A ROW  ·  ×' + multiplier : '');
 }
 
@@ -160,7 +162,7 @@ function panel(next) {
   $('menu').hidden = title;
   $('panelTitle').classList.toggle('compact', !title);
   $('panelTitle').innerHTML = title ? 'BOTTLE<span>TOSS</span>' : paused ? 'PIT <span>STOP</span>' : 'RUN <span>COMPLETE</span>';
-  write('intro', title ? 'Ride in the back seat on the Sunset Circuit. Time your throw as a roadside sign sweeps into range.'
+  write('intro', title ? 'Ride from sunset into night. Time your throw as a sign sweeps past, and watch for radar boards worth bonus points.'
     : paused ? 'Your run is on hold.' : 'Take another run at your best score.');
   $('start').firstChild.nodeValue = title ? 'Start run ' : paused ? 'Resume ' : 'Run again ';
   if (active) canvas.focus({ preventScroll: true });
@@ -228,7 +230,7 @@ function cancelHold() {
 
 function fillRoad() {
   while (run.nextZ < run.dist + 300) {
-    run.targets.push(makeTarget(run.nextIndex, run.nextZ));
+    run.targets.push(makeTarget(run.nextIndex, run.nextZ, true));
     run.nextZ += (run.practice ? 55 : 73) + (run.nextIndex * 17 % 19);
     run.nextIndex++;
   }
@@ -241,7 +243,7 @@ function aimAt(x, y) {
 }
 
 function targetGuide() {
-  const future = distance(run.time + FLIGHT);
+  const future = driveDistance(run.time + FLIGHT);
   let guide = null;
   let contact = null;
   let nearest = Infinity;
@@ -266,7 +268,7 @@ function release(input) {
     message('HOLD A LITTLE LONGER', .85);
     return;
   }
-  const future = distance(run.time + FLIGHT);
+  const future = driveDistance(run.time + FLIGHT);
   const { guide, contact } = targetGuide();
   const hit = contact?.hit;
   const shot = {
@@ -308,6 +310,7 @@ function resolve(shot) {
   run.bursts.push({ x: shot.aim.x, y: shot.aim.y, z: target.z, age: 0, points });
   message((shot.perfect ? 'PERFECT · ' : 'HIT · ') + signs[target.kind].name + ' +' + points, 1.15);
   playSound('hit', shot.perfect);
+  if (target.kind === 'radar' && sound && audio?.state === 'running') tone(1060,1430,.18,.038,'sine',.11);
 }
 
 function updatePrompt(contact) {
@@ -326,9 +329,19 @@ function updatePrompt(contact) {
   $('throw').setAttribute('aria-disabled', String(!hold && !canThrow()));
 }
 
+function driveDistance(time) {
+  return distance(time) + boostDistance(time, run.boost);
+}
+
 function simulate(dt) {
   run.time += dt;
-  run.dist = distance(run.time);
+  run.dist = driveDistance(run.time);
+  const passed = run.targets.find(target => target.kind === 'radar' && !target.passed && target.z <= run.dist);
+  if (passed) {
+    passed.passed = true;
+    run.boost = { at: run.time, carried: boostDistance(run.time, run.boost) };
+    if (run.calloutUntil <= run.time) message('RADAR PASSED · PICKING UP SPEED', 1.15);
+  }
   fillRoad();
   if (hold?.input === 'key') {
     let x = 0, y = 0;
@@ -373,6 +386,8 @@ function frame(timestamp) {
   const bob = reduced.matches ? 0 : Math.sin(time * 3.8) * Math.min(2.5, scene.h*.005) + hitShake;
   const view = {
     time, dist: title ? elapsed * 24 : run.dist, lean, bob, holding: active && Boolean(hold), guide, contact,
+    ...routeLight(title ? 0 : run.time),
+    mirror: !title && run.boost ? run.time - run.boost.at : Infinity,
     charge: hold ? clamp((run.time - hold.time) / WINDUP, 0, 1) : 1,
     follow: !hold && run.lastThrow !== null ? (run.time - run.lastThrow) / FLIGHT : null,
     aim: run.aim, reduced: reduced.matches, shots: run.shots, bursts: run.bursts,
