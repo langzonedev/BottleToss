@@ -80,7 +80,10 @@ h1.compact { font-size: clamp(2.5rem,6vw,5rem); letter-spacing: -.06em; }
 .actions button { min-width: 86px; }
 .actions .primary { background: var(--amber); color: #211507; border-color: #ffc995; min-width: 136px; text-align: left; }
 .primary span { float: right; margin-left: 12px; }
+.practice-link { display: block; background: transparent; border-color: transparent; padding-inline: 0; text-decoration: underline; text-underline-offset: .22em; }
+.practice-link:hover { border-color: transparent; color: var(--amber); }
 .fine { margin: 15px 0 0; letter-spacing: .1em; font-size: .59rem; }
+.practice-link:not([hidden]) + .fine { margin-top: 2px; }
 .fine span { color: var(--amber); margin: 0 4px; }
 .results { display: flex; gap: 8px; flex-wrap: wrap; margin: 0 0 16px; }
 .results span { background: #191a1dec; border: 1px solid var(--line); border-radius: 4px; padding: 7px 9px; font: 700 .67rem var(--mono); }

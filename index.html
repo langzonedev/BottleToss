@@ -7,7 +7,7 @@
   <meta name="description" content="A back-seat arcade timing game from Lang Systems. Hold, aim, release.">
   <title>BottleToss | Lang Systems Arcade</title>
   <link rel="icon" href="./art/icon.svg" type="image/svg+xml">
-  <link rel="stylesheet" href="./style.css?v=4">
+  <link rel="stylesheet" href="./style.css?v=5">
 </head>
 <body>
   <main id="game" aria-label="BottleToss arcade game">
@@ -45,11 +45,11 @@
         <div id="results" class="results" hidden></div>
         <div class="actions">
           <button id="start" class="primary" type="button">Minute Run <span aria-hidden="true">→</span></button>
-          <button id="endurance" type="button">Endurance</button>
-          <button id="practice" type="button">Practice</button>
+          <button id="endurance" class="primary" type="button">Endurance <span aria-hidden="true">→</span></button>
           <button id="endRun" type="button" hidden>End run</button>
           <button id="menu" type="button" hidden>Title screen</button>
         </div>
+        <button id="practice" class="practice-link" type="button">Practice</button>
         <p id="best" class="fine">MINUTE BEST <b id="minuteBest">0000</b> <span>•</span> ENDURANCE BEST <b id="enduranceBest">0000</b></p>
       </div>
     </section>
