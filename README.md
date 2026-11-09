@@ -23,3 +23,7 @@ Wait for **Release now** and the green sight. The little diamond marks the targe
 Publish from **Settings → Pages → Deploy from a branch → main → /(root)**. There is no build step. Serve the repository root over HTTP for local development, for example with `python3 -m http.server 8000`.
 
 [Lang Systems Core baseline](docs/CORE_BASELINE.md) · [Human test handoff](docs/PLAYTEST.md)
+
+## First playtest candidate
+
+Verified in desktop Chromium and in 390 × 844 portrait and 844 × 390 landscape viewports. Scripted checks exercised hit and miss scoring, pause and resume, run results, replay and local best. The first human pass should focus on touch aim and impact sound on a physical phone.
