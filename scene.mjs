@@ -2,6 +2,8 @@ import { AIM_DEPTH, clamp, mix, signs } from './engine.mjs';
 
 const TAU = Math.PI * 2;
 const noise = (n) => { const v = Math.sin(n * 127.13 + 81.17) * 43758.5453; return v - Math.floor(v); };
+const cameraLean = (lean, reduced) => reduced ? lean * .14 : lean;
+const ease = (t) => t * t * (3 - 2 * t);
 
 export class Scene {
   constructor(canvas) {
@@ -112,9 +114,10 @@ export class Scene {
 
   project(x, y, z, view) {
     const s = this.focal / Math.max(.45, z);
+    const lean = cameraLean(view.lean, view.reduced);
     return [
-      this.centre + view.lean * this.w * .040 + (x - view.lean * .30) * s,
-      this.horizon + view.bob + (1.64 - y) * s,
+      this.centre - lean * this.w * .115 + (x - lean * 1.05) * s,
+      this.horizon + view.bob - lean * this.h * .009 + (1.64 + lean * .20 - y) * s,
     ];
   }
 
@@ -237,8 +240,10 @@ export class Scene {
     const c = this.ctx;
     const w = this.w, h = this.h;
     const narrow = w < 650;
-    const shift = view.lean * .040;
-    const p = (x,y) => [(x + shift) * w,y*h + view.bob*.65];
+    const lean = cameraLean(view.lean, view.reduced);
+    // The near cabin slides left faster than the road as the player clears the window.
+    const shift = -lean * .46;
+    const p = (x,y) => [(x + shift) * w, (y + lean * (y - .30) * .16) * h + view.bob * .65];
     const poly = (colour, points, line, weight) => this.poly(colour, points.map(([x,y]) => p(x,y)), line, weight);
     const line = (colour, weight, points) => this.line(colour, weight, points.map(([x,y]) => p(x,y)));
 
@@ -282,29 +287,96 @@ export class Scene {
     poly('#453839', [[.444,.754],[.517,.74],[.579,.765],[.588,.88],[.543,.91],[.455,.90],[.426,.85]], '#715346', Math.max(1,h*.003));
     line('#a3785c',Math.max(1,h*.003),[[.446,.757],[.478,.78],[.542,.78],[.576,.767]]);
     if (view.ammo > 0) {
-      this.bottle((.482+shift)*w,.817*h,Math.min(w*.046,h*.046),-.4);
-      if (view.ammo > 1) this.bottle((.522+shift)*w,.812*h,Math.min(w*.044,h*.044),.26);
-      if (view.ammo > 2) this.bottle((.55+shift)*w,.829*h,Math.min(w*.040,h*.040),.56);
+      this.bottle(...p(.482,.817),Math.min(w*.046,h*.046),-.4);
+      if (view.ammo > 1) this.bottle(...p(.522,.812),Math.min(w*.044,h*.044),.26);
+      if (view.ammo > 2) this.bottle(...p(.55,.829),Math.min(w*.040,h*.040),.56);
     }
   }
 
+  windowSill(view) {
+    const w = this.w, h = this.h;
+    const lean = cameraLean(view.lean, view.reduced);
+    if (lean < .01) return;
+    const top = mix(1.05,.76,lean) * h;
+    const left = mix(.98,.39,lean) * w;
+    const edge = [[left,h*1.04],[left+w*.13,top+h*.095],[w*1.04,top]];
+    this.poly(this.gradient(0,top,0,h,[[0,'#59515b'],[.13,'#34323e'],[1,'#20232e']]),
+      [...edge,[w*1.04,h*1.04]]);
+    this.line('#a46c63',Math.max(2,h*.004),edge);
+    this.line('#1a2029',Math.max(2,h*.008),edge.map(([x,y]) => [x,y+h*.011]));
+  }
+
+  armPose(aim, lean, reduced, charge, follow) {
+    const { w, h } = this;
+    const u = Math.min(w,h) * .125;
+    const [ax,ay] = this.project(aim.x,aim.y,AIM_DEPTH,{lean,reduced,bob:0});
+    const windup = ease(charge);
+    const sweep = Math.sin(Math.PI * ease(clamp(follow / .36,0,1))) * (reduced ? .38 : 1);
+    const drop = ease(clamp((follow - .17) / .75,0,1));
+    const retract = ease(clamp((follow - .78) / .66,0,1));
+    const x = w * mix(.91,.79,lean) + (ax-w*.68)*.35 + u*(.39*windup-1.05*sweep+.43*drop);
+    const y = h * mix(.99,.645,lean) + (ay-this.horizon)*.48 + u*(-.12*windup-1.08*sweep+1.28*drop+2.4*retract);
+    const angle = -.26 - windup*.34 - sweep*.61 + drop*.34;
+    const gripX = x + u*(.04*Math.cos(angle) + .20*Math.sin(angle));
+    const gripY = y + u*(.04*Math.sin(angle) - .20*Math.cos(angle));
+    return {x,y,u,angle,gripX,gripY,bottleSize:u*.91,bottleAngle:angle-.24};
+  }
+
+  launchOrigin(aim, lean, reduced) {
+    const pose = this.armPose(aim,lean,reduced,1,0);
+    return {
+      x: pose.gripX / this.w, y: pose.gripY / this.h,
+      size: pose.bottleSize / Math.min(this.w,this.h), angle: pose.bottleAngle,
+    };
+  }
+
   hand(view) {
-    const l = view.lean;
-    if (l < .015) return;
+    const follow = view.follow ?? view.shots[0]?.age;
+    if (view.lean < .015 || follow > 1.44) return;
     const c = this.ctx, w = this.w, h = this.h;
-    const [ax,ay] = this.project(view.aim.x, view.aim.y, AIM_DEPTH, view);
-    const x = mix(w*.76, w*.84, l) + (ax-w*.78)*.13;
-    const y = mix(h*.86, h*.586, l) + (ay-this.horizon)*.20;
-    const u = Math.min(w*.11,h*.108);
-    this.poly('#423647', [[w*1.03,h*.94],[w*.925,h*.91],[x-u*.34,y+u*.42],[x+u*.18,y+u*.12],[w*.99,h*.75],[w*1.03,h*.79]], '#69515f', 2);
-    this.poly('#bd7e65', [[x-u*.39,y+u*.25],[x-u*.49,y-u*.07],[x-u*.14,y-u*.27],[x+u*.32,y-u*.16],[x+u*.39,y+u*.09],[x+u*.14,y+u*.33]], '#df9e7d', 1.5);
-    if (view.holding) this.bottle(x-u*.21,y-u*.20,u*.94,.34 + l*.38);
-    this.line('#f2ad87', Math.max(1,u*.05), [[x-u*.22,y+u*.17],[x+u*.17,y+u*.05],[x+u*.31,y-u*.05]]);
-    if (!view.reduced && l > .58) {
-      c.globalAlpha = l * .42;
-      for (let i=0;i<7;i++) {
+    const gripping = follow === undefined;
+    const {x,y,u,angle,gripX,gripY,bottleSize,bottleAngle} =
+      this.armPose(view.aim,view.lean,view.reduced,view.charge ?? 1,follow ?? 0);
+
+    const shoulder = [w*.99 + u*.5,h*.98 + u*.33];
+    const elbow = [x + u*1.24,y + u*1.42];
+    const wrist = [x + u*.26,y + u*.19];
+    const sleeve = this.gradient(x,y,shoulder[0],shoulder[1],[[0,'#686274'],[.46,'#484759'],[1,'#232735']]);
+    c.beginPath();
+    c.moveTo(shoulder[0]-u*.51,shoulder[1]+u*.19);
+    c.quadraticCurveTo(elbow[0]-u*.45,elbow[1]+u*.19,wrist[0]-u*.34,wrist[1]+u*.22);
+    c.lineTo(wrist[0]+u*.23,wrist[1]-u*.32);
+    c.quadraticCurveTo(elbow[0]+u*.57,elbow[1]-u*.45,shoulder[0]+u*.50,shoulder[1]-u*.42);
+    c.closePath();
+    c.fillStyle = sleeve; c.fill();
+    this.line('#a38890',Math.max(1,u*.023),[[wrist[0]+u*.20,wrist[1]-u*.25],[elbow[0]+u*.30,elbow[1]-u*.29],[shoulder[0],shoulder[1]-u*.36]]);
+    this.line('#373748',Math.max(1,u*.084),[[wrist[0]-u*.27,wrist[1]+u*.22],[wrist[0]+u*.25,wrist[1]-u*.29]]);
+
+    c.save();
+    c.translate(x,y); c.rotate(angle); c.scale(u,u);
+    this.oval(.04,.10,.34,.24,'#a96858',.23);
+    this.oval(-.03,.035,.29,.21,'#d18b6d',.24);
+    c.restore();
+
+    if (gripping) this.bottle(gripX,gripY,bottleSize,bottleAngle);
+
+    c.save();
+    c.translate(x,y); c.rotate(angle); c.scale(u,u);
+    const open = gripping ? 0 : 1 - ease(clamp((follow - .24) / .51,0,1));
+    for (let i=0;i<4;i++) {
+      const fy = -.14+i*.089;
+      const fx = -.09 - open*(.17-i*.026);
+      this.oval(fx,fy,.225-i*.014+open*.075,.058,i % 2 ? '#e3a17e' : '#efad84',-.29-open*.17);
+      this.line('#b97860',.014,[[fx-.07,fy+.035],[fx+.037,fy+.008]]);
+    }
+    this.oval(.21,.035,.13,.082,'#efae83',-.80);
+    c.restore();
+
+    if (!view.reduced && view.lean > .58) {
+      c.globalAlpha = view.lean * .42;
+      for (let i=0;i<6;i++) {
         const t = (view.dist*.17+i*.173)%1;
-        const sx = w * (.78 + .29*t), sy = h * (.22+i*.052);
+        const sx = w * (.68 + .35*t), sy = h * (.23+i*.066);
         this.line('#ffdeae84',1,[[sx,sy],[sx+w*(.017+t*.052),sy+h*(.005+t*.02)]]);
       }
       c.globalAlpha = 1;
@@ -353,7 +425,8 @@ export class Scene {
       if (shot.age > 1) continue;
       const t = clamp(shot.age,0,1);
       const [tx,ty] = this.project(shot.aim.x,shot.aim.y,shot.depth,view);
-      const [sx,sy] = [this.w*.85,this.h*.57];
+      const origin = shot.origin ?? this.launchOrigin(shot.aim,view.lean,view.reduced);
+      const sx = origin.x * this.w, sy = origin.y * this.h;
       const arc = view.reduced ? .027 : .09;
       const flight = (q) => [mix(sx,tx,q),mix(sy,ty,q)-Math.sin(q*Math.PI)*this.h*arc];
       if (!view.reduced) {
@@ -363,7 +436,8 @@ export class Scene {
         }
       }
       const [x,y] = flight(t);
-      this.bottle(x,y,mix(Math.min(this.w*.095,this.h*.078),7,t),view.reduced ? .5 : t*8+.3);
+      const size = origin.size * Math.min(this.w,this.h);
+      this.bottle(x,y,mix(size,7,t),origin.angle + (view.reduced ? 0 : t*8));
     }
 
     for (const burst of view.bursts) {
@@ -392,10 +466,12 @@ export class Scene {
   render(view) {
     const c = this.ctx;
     c.setTransform(this.dpr,0,0,this.dpr,0,0);
-    c.drawImage(this.backdrop,0,0,this.w,this.h);
+    const lean = cameraLean(view.lean,view.reduced);
+    c.drawImage(this.backdrop,-this.w*.058*lean,-this.h*.018*lean,this.w*(1+.058*lean),this.h*(1+.018*lean));
     this.road(view);
     this.scenery(view);
     this.cabin(view);
+    this.windowSill(view);
     this.hand(view);
     this.effects(view);
     this.sight(view);

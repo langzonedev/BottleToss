@@ -1,5 +1,6 @@
 import { AIM_DEPTH, AMMO, DURATION, FLIGHT, HOME, WINDUP, clamp, distance, makeTarget, pace, scoreHit, signs, targetContact } from './engine.mjs';
-import { Scene } from './scene.mjs';
+import { Scene } from './scene.mjs?v=2';
+import { fillShatter } from './shatter.mjs';
 
 const $ = (id) => document.getElementById(id);
 const canvas = $('scene');
@@ -23,6 +24,8 @@ let sound = load('sound', 'on') === 'on';
 let best = Number(load('best','0')) || 0;
 let audio;
 let noiseBuffer;
+const shatters = [];
+let nextShatter = 0;
 
 function load(key, fallback) {
   try { return localStorage.getItem('bottletoss.' + key) ?? fallback; } catch { return fallback; }
@@ -36,7 +39,7 @@ function newRun(practice) {
   return {
     practice, time: 0, dist: 0, aim: { ...HOME }, targets: [], nextIndex: 0, nextZ: practice ? 68 : 75,
     shots: [], bursts: [], score: 0, ammo: AMMO, tossed: 0, hits: 0, streak: 0, longest: 0,
-    callout: '', calloutUntil: 0, hitUntil: 0, pullbackUntil: 0,
+    callout: '', calloutUntil: 0, hitUntil: 0, pullbackUntil: 0, lastThrow: null,
   };
 }
 
@@ -82,18 +85,30 @@ function crunch(frequency, length, volume, type = 'bandpass') {
   src.start(t); src.stop(t + length);
 }
 
+function playShatter() {
+  const index = nextShatter;
+  nextShatter = (index + 1) % 3;
+  if (!shatters[index]) {
+    const buffer = audio.createBuffer(1, Math.ceil(audio.sampleRate * .49), audio.sampleRate);
+    fillShatter(buffer.getChannelData(0), audio.sampleRate, 179 + index * 811);
+    shatters[index] = buffer;
+  }
+  const source = audio.createBufferSource();
+  const gain = audio.createGain();
+  source.buffer = shatters[index];
+  gain.gain.value = .88;
+  source.connect(gain).connect(audio.destination);
+  source.start();
+}
+
 function playSound(name, perfect = false) {
   if (!sound || audio?.state !== 'running') return;
   if (name === 'throw') {
     crunch(740,.18,.19);
     tone(258,112,.15,.035,'triangle');
   } else if (name === 'hit') {
-    crunch(2260,.30,.33,'highpass');
-    crunch(522,.16,.30);
-    tone(198,62,.21,.15,'triangle');
-    tone(928,568,.26,.06,'triangle',.023);
-    tone(1460,1110,.17,.045,'sine',.037);
-    if (perfect) tone(1810,1590,.26,.04,'sine',.10);
+    playShatter();
+    if (perfect) tone(1810,1590,.21,.025,'sine',.12);
   } else if (name === 'miss') {
     crunch(350,.13,.10);
     tone(130,85,.15,.043,'triangle');
@@ -256,11 +271,13 @@ function release(input) {
   const hit = contact?.hit;
   const shot = {
     aim: { ...run.aim }, depth: hit ? guide.z - future : AIM_DEPTH, age: 0, at: run.time,
+    origin: scene.launchOrigin(run.aim, lean, reduced.matches),
     target: hit ? guide : null, perfect: Boolean(contact?.perfect),
     miss: !guide ? 'OUT OF RANGE' : contact.t > 1 ? 'TOO EARLY'
       : contact.t < -1 ? 'TOO LATE' : 'MISSED · ADJUST AIM',
   };
   run.shots.push(shot);
+  run.lastThrow = run.time;
   run.tossed++;
   if (!run.practice) run.ammo--;
   run.pullbackUntil = run.time + FLIGHT + .07;
@@ -346,14 +363,18 @@ function frame(timestamp) {
   const active = state === 'playing';
   const title = state === 'title';
   const { guide, contact } = active && hold ? targetGuide() : { guide: null, contact: null };
-  const targetLean = active && hold ? 1 : active && run.shots.length ? .65 : 0;
-  if (active || title) lean += (targetLean - lean) * (1 - Math.exp(-dt * 16));
+  const showThrow = active && (run.shots.length > 0 || run.hitUntil > run.time);
+  const targetLean = active && hold ? 1 : showThrow ? .91 : 0;
+  const easing = targetLean > lean ? 15 : 9;
+  if (active || title) lean += (targetLean - lean) * (1 - Math.exp(-dt * easing));
   if (active) { updateHUD(); updatePrompt(contact); }
   const time = title ? elapsed : run.time;
   const hitShake = active && !reduced.matches ? Math.max(0, run.hitUntil - time) * Math.sin(time * 145) * 21 : 0;
   const bob = reduced.matches ? 0 : Math.sin(time * 3.8) * Math.min(2.5, scene.h*.005) + hitShake;
   const view = {
     time, dist: title ? elapsed * 24 : run.dist, lean, bob, holding: active && Boolean(hold), guide, contact,
+    charge: hold ? clamp((run.time - hold.time) / WINDUP, 0, 1) : 1,
+    follow: !hold && run.lastThrow !== null ? (run.time - run.lastThrow) / FLIGHT : null,
     aim: run.aim, reduced: reduced.matches, shots: run.shots, bursts: run.bursts,
     targets: title ? titleTargets(time) : run.targets, ammo: run.practice ? AMMO : run.ammo,
   };
