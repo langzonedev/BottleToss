@@ -105,12 +105,37 @@ function playShatter() {
   source.start();
 }
 
+function texture(context, output, layers) {
+  const now = context.currentTime;
+  for (const [delay, duration, frequency, resonance, level] of layers) {
+    const source = context.createBufferSource();
+    const frames = Math.ceil(context.sampleRate * duration);
+    source.buffer = context.createBuffer(1, frames, context.sampleRate);
+    const data = source.buffer.getChannelData(0);
+    for (let i = 0; i < frames; i++) {
+      const attack = Math.min(1, i / (context.sampleRate * .0015));
+      data[i] = (Math.random() * 2 - 1) * attack * (1 - i / frames) ** 2;
+    }
+    const filter = context.createBiquadFilter();
+    filter.type = 'bandpass';
+    filter.frequency.value = frequency;
+    filter.Q.value = resonance;
+    const gain = context.createGain();
+    gain.gain.value = level;
+    source.connect(filter).connect(gain).connect(output);
+    source.start(now + delay);
+  }
+}
+
 function playSound(name, perfect = false) {
   if (!sound || audio?.state !== 'running') return;
   if (name === 'throw') {
     crunch(740,.18,.19);
     tone(258,112,.15,.035,'triangle');
   } else if (name === 'hit') {
+    texture(audio, audio.destination, [
+      [0, .034, 1500, 1.15, .61], [.008, .13, 620, 2.6, .38],
+    ]);
     playShatter();
     if (perfect) tone(1810,1590,.21,.025,'sine',.12);
   } else if (name === 'miss') {
